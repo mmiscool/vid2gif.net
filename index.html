@@ -1,0 +1,1013 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  />
+  <title>Video to GIF</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0f1115;
+      --panel: #171a21;
+      --panel-2: #1d2230;
+      --border: #2a3142;
+      --text: #e7ecf3;
+      --muted: #9ba7ba;
+      --accent: #7aa2ff;
+      --accent-2: #5f87e6;
+      --danger: #ff7a7a;
+      --shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      min-height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font: 14px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    body {
+      padding: 24px;
+    }
+
+    .app {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 380px 1fr;
+      gap: 24px;
+    }
+
+    .panel {
+      background: linear-gradient(180deg, var(--panel), var(--panel-2));
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+    }
+
+    .controls {
+      padding: 20px;
+      position: sticky;
+      top: 24px;
+      align-self: start;
+    }
+
+    .viewer {
+      padding: 20px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 24px;
+      line-height: 1.2;
+    }
+
+    p.lead {
+      margin: 0 0 20px;
+      color: var(--muted);
+    }
+
+    .group {
+      margin-bottom: 16px;
+      padding: 14px;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+    }
+
+    .group h2 {
+      margin: 0 0 12px;
+      font-size: 14px;
+      color: var(--muted);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .field {
+      margin-bottom: 12px;
+    }
+
+    .field:last-child {
+      margin-bottom: 0;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    input[type="file"],
+    input[type="number"],
+    input[type="text"],
+    button,
+    a.button {
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: #11151e;
+      color: var(--text);
+      padding: 10px 12px;
+      font: inherit;
+    }
+
+    input[type="file"] {
+      padding: 8px;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--accent);
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .row-3 {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 10px;
+    }
+
+    button,
+    a.button {
+      cursor: pointer;
+      background: linear-gradient(180deg, var(--accent), var(--accent-2));
+      border: 0;
+      color: white;
+      font-weight: 700;
+      text-decoration: none;
+      text-align: center;
+    }
+
+    button.secondary {
+      background: #1a2130;
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    button:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    .status {
+      min-height: 22px;
+      margin-top: 12px;
+      color: var(--muted);
+    }
+
+    .status.error {
+      color: var(--danger);
+    }
+
+    .media-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+      align-items: start;
+    }
+
+    .media-card {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px;
+    }
+
+    .media-card h3 {
+      margin: 0 0 10px;
+      font-size: 14px;
+      color: var(--muted);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    video,
+    img,
+    canvas {
+      width: 100%;
+      display: block;
+      border-radius: 12px;
+      background: #0a0d12;
+      border: 1px solid var(--border);
+    }
+
+    .meta {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 13px;
+      word-break: break-word;
+    }
+
+    .pill {
+      display: inline-block;
+      padding: 5px 8px;
+      border-radius: 999px;
+      background: #121827;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 12px;
+      margin-right: 6px;
+      margin-top: 6px;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .hint {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 6px;
+    }
+
+    .progress {
+      height: 10px;
+      border-radius: 999px;
+      overflow: hidden;
+      background: #0d1119;
+      border: 1px solid var(--border);
+      margin-top: 10px;
+    }
+
+    .progress-bar {
+      width: 0%;
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent), #9bb8ff);
+      transition: width 0.12s linear;
+    }
+
+    @media (max-width: 980px) {
+      .app {
+        grid-template-columns: 1fr;
+      }
+
+      .controls {
+        position: static;
+      }
+
+      .media-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <section class="panel controls">
+      <h1>Video to GIF</h1>
+      <p class="lead">Pick a local video, choose frame rate and export a GIF with no external libraries.</p>
+
+      <div class="group">
+        <h2>Source</h2>
+        <div class="field">
+          <label for="videoFile">Video file</label>
+          <input id="videoFile" type="file" accept="video/*" />
+          <div class="hint">Use a browser-playable format like MP4, WebM, or Ogg.</div>
+        </div>
+      </div>
+
+      <div class="group">
+        <h2>Timing</h2>
+        <div class="field">
+          <label for="fps">Frame rate: <span id="fpsValue">12</span> fps</label>
+          <input id="fps" type="range" min="1" max="30" step="1" value="12" />
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="startTime">Start time (seconds)</label>
+            <input id="startTime" type="number" min="0" step="0.01" value="0" />
+          </div>
+          <div class="field">
+            <label for="endTime">End time (seconds)</label>
+            <input id="endTime" type="number" min="0" step="0.01" value="0" />
+          </div>
+        </div>
+      </div>
+
+      <div class="group">
+        <h2>Output</h2>
+        <div class="row">
+          <div class="field">
+            <label for="gifWidth">Width (px)</label>
+            <input id="gifWidth" type="number" min="1" step="1" value="320" />
+          </div>
+          <div class="field">
+            <label for="gifHeight">Height (px)</label>
+            <input id="gifHeight" type="number" min="1" step="1" value="180" />
+          </div>
+        </div>
+        <div class="row-3">
+          <div class="field">
+            <label for="loopCount">Loop count</label>
+            <input id="loopCount" type="number" min="0" step="1" value="0" />
+          </div>
+          <div class="field">
+            <label for="outputName">Filename</label>
+            <input id="outputName" type="text" value="animation.gif" />
+          </div>
+          <div class="field">
+            <label>&nbsp;</label>
+            <button id="fitToVideo" type="button" class="secondary">Use Video Size</button>
+          </div>
+        </div>
+        <div class="hint">Loop count 0 means infinite looping.</div>
+      </div>
+
+      <div class="group">
+        <h2>Export</h2>
+        <div class="row">
+          <button id="generateBtn" type="button" disabled>Generate GIF</button>
+          <button id="captureRangeBtn" type="button" class="secondary" disabled>Use Current Time as Start</button>
+        </div>
+        <div class="status" id="status">Load a video to begin.</div>
+        <div class="progress">
+          <div class="progress-bar" id="progressBar"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel viewer">
+      <div class="media-grid">
+        <div class="media-card">
+          <h3>Source Video</h3>
+          <video id="video" controls playsinline preload="metadata"></video>
+          <div class="meta" id="videoMeta">No video loaded.</div>
+        </div>
+
+        <div class="media-card">
+          <h3>Generated GIF</h3>
+          <img id="gifPreview" alt="Generated GIF preview" class="hidden" />
+          <canvas id="emptyPreview" width="640" height="360"></canvas>
+          <div class="meta" id="gifMeta">No GIF generated yet.</div>
+          <div style="margin-top: 12px;">
+            <a id="downloadLink" class="button hidden" download="animation.gif">Download GIF</a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    class ByteArray {
+      constructor() {
+        this.data = [];
+      }
+
+      writeByte(value) {
+        this.data.push(value & 255);
+      }
+
+      writeBytes(values) {
+        for (let i = 0; i < values.length; i++) {
+          this.writeByte(values[i]);
+        }
+      }
+
+      writeString(str) {
+        for (let i = 0; i < str.length; i++) {
+          this.writeByte(str.charCodeAt(i));
+        }
+      }
+
+      writeShort(value) {
+        this.writeByte(value & 255);
+        this.writeByte((value >> 8) & 255);
+      }
+
+      toUint8Array() {
+        return new Uint8Array(this.data);
+      }
+
+      toBlob(type = "image/gif") {
+        return new Blob([this.toUint8Array()], { type });
+      }
+    }
+
+    function clamp(value, min, max) {
+      return Math.max(min, Math.min(max, value));
+    }
+
+    function nearestPaletteIndex(r, g, b) {
+      const ri = (r * 7 / 255) | 0;
+      const gi = (g * 7 / 255) | 0;
+      const bi = (b * 3 / 255) | 0;
+      return (ri << 5) | (gi << 2) | bi;
+    }
+
+    function create332Palette() {
+      const palette = new Uint8Array(256 * 3);
+      let p = 0;
+
+      for (let r = 0; r < 8; r++) {
+        for (let g = 0; g < 8; g++) {
+          for (let b = 0; b < 4; b++) {
+            palette[p++] = Math.round((r * 255) / 7);
+            palette[p++] = Math.round((g * 255) / 7);
+            palette[p++] = Math.round((b * 255) / 3);
+          }
+        }
+      }
+
+      return palette;
+    }
+
+    function rgbaToIndexed332(rgba) {
+      const pixelCount = rgba.length / 4;
+      const indexed = new Uint8Array(pixelCount);
+
+      for (let i = 0, j = 0; i < pixelCount; i++, j += 4) {
+        indexed[i] = nearestPaletteIndex(rgba[j], rgba[j + 1], rgba[j + 2]);
+      }
+
+      return indexed;
+    }
+
+    function writeSubBlocks(writer, bytes) {
+      let offset = 0;
+
+      while (offset < bytes.length) {
+        const size = Math.min(255, bytes.length - offset);
+        writer.writeByte(size);
+
+        for (let i = 0; i < size; i++) {
+          writer.writeByte(bytes[offset + i]);
+        }
+
+        offset += size;
+      }
+
+      writer.writeByte(0);
+    }
+
+    function lzwEncode(minCodeSize, indices) {
+      const CLEAR_CODE = 1 << minCodeSize;
+      const END_CODE = CLEAR_CODE + 1;
+      const MAX_DICT_SIZE = 4096;
+
+      let codeSize = minCodeSize + 1;
+      let nextCode = END_CODE + 1;
+      const dict = new Map();
+
+      const outputBytes = [];
+      let bitBuffer = 0;
+      let bitCount = 0;
+
+      const writeCode = (code) => {
+        bitBuffer |= code << bitCount;
+        bitCount += codeSize;
+
+        while (bitCount >= 8) {
+          outputBytes.push(bitBuffer & 255);
+          bitBuffer >>= 8;
+          bitCount -= 8;
+        }
+      };
+
+      const resetDictionary = () => {
+        dict.clear();
+        nextCode = END_CODE + 1;
+        codeSize = minCodeSize + 1;
+      };
+
+      writeCode(CLEAR_CODE);
+
+      let prefix = String.fromCharCode(indices[0]);
+
+      for (let i = 1; i < indices.length; i++) {
+        const k = String.fromCharCode(indices[i]);
+        const key = prefix + k;
+
+        if (dict.has(key)) {
+          prefix = key;
+        } else {
+          const prefixCode = prefix.length === 1 ? prefix.charCodeAt(0) : dict.get(prefix);
+          writeCode(prefixCode);
+
+          if (nextCode < MAX_DICT_SIZE) {
+            dict.set(key, nextCode++);
+            if (nextCode === (1 << codeSize) && codeSize < 12) {
+              codeSize++;
+            }
+          } else {
+            writeCode(CLEAR_CODE);
+            resetDictionary();
+          }
+
+          prefix = k;
+        }
+      }
+
+      const finalCode = prefix.length === 1 ? prefix.charCodeAt(0) : dict.get(prefix);
+      writeCode(finalCode);
+      writeCode(END_CODE);
+
+      if (bitCount > 0) {
+        outputBytes.push(bitBuffer & 255);
+      }
+
+      return new Uint8Array(outputBytes);
+    }
+
+    class GIFEncoder {
+      constructor(width, height, options = {}) {
+        this.width = width;
+        this.height = height;
+        this.loop = options.loop ?? 0;
+        this.backgroundIndex = options.backgroundIndex ?? 0;
+        this.palette = options.palette ?? create332Palette();
+        this.writer = new ByteArray();
+        this.started = false;
+        this.finished = false;
+      }
+
+      start() {
+        if (this.started) {
+          throw new Error("GIF encoding already started.");
+        }
+
+        this.started = true;
+
+        this.writer.writeString("GIF89a");
+        this.writer.writeShort(this.width);
+        this.writer.writeShort(this.height);
+
+        const globalColorTableFlag = 1;
+        const colorResolution = 7;
+        const sortFlag = 0;
+        const globalColorTableSize = 7;
+        const packed =
+          (globalColorTableFlag << 7) |
+          (colorResolution << 4) |
+          (sortFlag << 3) |
+          globalColorTableSize;
+
+        this.writer.writeByte(packed);
+        this.writer.writeByte(this.backgroundIndex);
+        this.writer.writeByte(0);
+
+        this.writer.writeBytes(this.palette);
+
+        this.writer.writeByte(0x21);
+        this.writer.writeByte(0xFF);
+        this.writer.writeByte(11);
+        this.writer.writeString("NETSCAPE2.0");
+        this.writer.writeByte(3);
+        this.writer.writeByte(1);
+        this.writer.writeShort(this.loop);
+        this.writer.writeByte(0);
+      }
+
+      addFrame(indexedPixels, delayMs = 100) {
+        if (!this.started) {
+          throw new Error("Call start() before addFrame().");
+        }
+
+        if (this.finished) {
+          throw new Error("GIF encoding already finished.");
+        }
+
+        const delayCs = Math.max(0, Math.round(delayMs / 10));
+
+        this.writer.writeByte(0x21);
+        this.writer.writeByte(0xF9);
+        this.writer.writeByte(4);
+        this.writer.writeByte(0);
+        this.writer.writeShort(delayCs);
+        this.writer.writeByte(0);
+        this.writer.writeByte(0);
+
+        this.writer.writeByte(0x2C);
+        this.writer.writeShort(0);
+        this.writer.writeShort(0);
+        this.writer.writeShort(this.width);
+        this.writer.writeShort(this.height);
+        this.writer.writeByte(0);
+
+        const minCodeSize = 8;
+        this.writer.writeByte(minCodeSize);
+
+        const compressed = lzwEncode(minCodeSize, indexedPixels);
+        writeSubBlocks(this.writer, compressed);
+      }
+
+      finish() {
+        if (!this.started) {
+          throw new Error("Call start() before finish().");
+        }
+
+        if (this.finished) {
+          throw new Error("GIF encoding already finished.");
+        }
+
+        this.finished = true;
+        this.writer.writeByte(0x3B);
+        return this.writer.toBlob("image/gif");
+      }
+    }
+
+    function waitForEvent(target, eventName) {
+      return new Promise((resolve) => {
+        const onEvent = () => {
+          target.removeEventListener(eventName, onEvent);
+          resolve();
+        };
+        target.addEventListener(eventName, onEvent, { once: true });
+      });
+    }
+
+    async function ensureVideoReady(video) {
+      if (video.readyState >= 2) {
+        return;
+      }
+      await waitForEvent(video, "loadeddata");
+    }
+
+    async function seekVideo(video, time) {
+      const target = clamp(time, 0, Math.max(0, video.duration || 0));
+
+      if (Math.abs(video.currentTime - target) < 0.0001) {
+        return;
+      }
+
+      const seekPromise = waitForEvent(video, "seeked");
+      video.currentTime = target;
+      await seekPromise;
+    }
+
+    async function videoToGif(video, fps, options = {}) {
+      if (!(video instanceof HTMLVideoElement)) {
+        throw new TypeError("First argument must be an HTMLVideoElement.");
+      }
+
+      if (!Number.isFinite(fps) || fps <= 0) {
+        throw new TypeError("fps must be a positive number.");
+      }
+
+      await ensureVideoReady(video);
+
+      const sourceWidth = video.videoWidth;
+      const sourceHeight = video.videoHeight;
+
+      if (!sourceWidth || !sourceHeight) {
+        throw new Error("Video metadata is not ready or has no dimensions.");
+      }
+
+      const width = options.width ?? sourceWidth;
+      const height = options.height ?? sourceHeight;
+      const duration = Number.isFinite(video.duration) ? video.duration : 0;
+      const startTime = clamp(options.startTime ?? 0, 0, duration);
+      const endTime = clamp(options.endTime ?? duration, startTime, duration);
+      const loop = options.loop ?? 0;
+
+      const frameStep = 1 / fps;
+      const delayMs = 1000 / fps;
+
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+
+      const ctx = canvas.getContext("2d", {
+        willReadFrequently: true,
+        alpha: false
+      });
+
+      if (!ctx) {
+        throw new Error("Could not create 2D canvas context.");
+      }
+
+      const encoder = new GIFEncoder(width, height, { loop });
+      encoder.start();
+
+      const originalPaused = video.paused;
+      video.pause();
+
+      const totalFrames = Math.max(1, Math.floor(((endTime - startTime) * fps) + 1));
+      let time = startTime;
+      let frameIndex = 0;
+      const epsilon = 0.000001;
+
+      while (time < endTime + epsilon) {
+        await seekVideo(video, Math.min(time, endTime));
+        ctx.drawImage(video, 0, 0, width, height);
+
+        const frame = ctx.getImageData(0, 0, width, height);
+        const indexed = rgbaToIndexed332(frame.data);
+        encoder.addFrame(indexed, delayMs);
+
+        frameIndex++;
+        if (typeof options.onProgress === "function") {
+          options.onProgress({
+            frame: frameIndex,
+            totalFrames,
+            progress: frameIndex / totalFrames
+          });
+        }
+
+        time += frameStep;
+
+        if (time > endTime && endTime - (time - frameStep) < epsilon) {
+          break;
+        }
+      }
+
+      if (!originalPaused) {
+        try {
+          await video.play();
+        } catch {
+        }
+      }
+
+      return encoder.finish();
+    }
+
+    const videoFileInput = document.getElementById("videoFile");
+    const video = document.getElementById("video");
+    const fpsInput = document.getElementById("fps");
+    const fpsValue = document.getElementById("fpsValue");
+    const startTimeInput = document.getElementById("startTime");
+    const endTimeInput = document.getElementById("endTime");
+    const gifWidthInput = document.getElementById("gifWidth");
+    const gifHeightInput = document.getElementById("gifHeight");
+    const loopCountInput = document.getElementById("loopCount");
+    const outputNameInput = document.getElementById("outputName");
+    const fitToVideoBtn = document.getElementById("fitToVideo");
+    const generateBtn = document.getElementById("generateBtn");
+    const captureRangeBtn = document.getElementById("captureRangeBtn");
+    const statusEl = document.getElementById("status");
+    const progressBar = document.getElementById("progressBar");
+    const gifPreview = document.getElementById("gifPreview");
+    const emptyPreview = document.getElementById("emptyPreview");
+    const videoMeta = document.getElementById("videoMeta");
+    const gifMeta = document.getElementById("gifMeta");
+    const downloadLink = document.getElementById("downloadLink");
+
+    let sourceVideoURL = "";
+    let gifObjectURL = "";
+
+    function setStatus(message, isError = false) {
+      statusEl.textContent = message;
+      statusEl.classList.toggle("error", isError);
+    }
+
+    function setProgress(value) {
+      progressBar.style.width = `${Math.max(0, Math.min(100, value * 100))}%`;
+    }
+
+    function formatBytes(bytes) {
+      if (bytes < 1024) return `${bytes} B`;
+      if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+      return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+    }
+
+    function formatTime(seconds) {
+      if (!Number.isFinite(seconds)) return "0.00";
+      return seconds.toFixed(2);
+    }
+
+    function drawEmptyPreview() {
+      const ctx = emptyPreview.getContext("2d");
+      const w = emptyPreview.width;
+      const h = emptyPreview.height;
+
+      ctx.clearRect(0, 0, w, h);
+
+      ctx.fillStyle = "#0b0f16";
+      ctx.fillRect(0, 0, w, h);
+
+      ctx.strokeStyle = "#293245";
+      ctx.lineWidth = 1;
+
+      const grid = 24;
+      for (let x = 0; x < w; x += grid) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, h);
+        ctx.stroke();
+      }
+
+      for (let y = 0; y < h; y += grid) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(w, y);
+        ctx.stroke();
+      }
+
+      ctx.fillStyle = "#9ba7ba";
+      ctx.font = "600 20px system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("GIF Preview", w / 2, h / 2 - 10);
+
+      ctx.font = "14px system-ui, sans-serif";
+      ctx.fillStyle = "#7e8a9d";
+      ctx.fillText("Generate a GIF to preview it here", w / 2, h / 2 + 18);
+    }
+
+    function revokeGifURL() {
+      if (gifObjectURL) {
+        URL.revokeObjectURL(gifObjectURL);
+        gifObjectURL = "";
+      }
+    }
+
+    function revokeVideoURL() {
+      if (sourceVideoURL) {
+        URL.revokeObjectURL(sourceVideoURL);
+        sourceVideoURL = "";
+      }
+    }
+
+    function updateDownloadName() {
+      const name = outputNameInput.value.trim() || "animation.gif";
+      downloadLink.download = name.toLowerCase().endsWith(".gif") ? name : `${name}.gif`;
+    }
+
+    fpsInput.addEventListener("input", () => {
+      fpsValue.textContent = fpsInput.value;
+    });
+
+    outputNameInput.addEventListener("input", updateDownloadName);
+
+    fitToVideoBtn.addEventListener("click", () => {
+      if (!video.videoWidth || !video.videoHeight) return;
+      gifWidthInput.value = video.videoWidth;
+      gifHeightInput.value = video.videoHeight;
+    });
+
+    captureRangeBtn.addEventListener("click", () => {
+      if (!Number.isFinite(video.currentTime)) return;
+      startTimeInput.value = video.currentTime.toFixed(2);
+    });
+
+    videoFileInput.addEventListener("change", async (event) => {
+      const file = event.target.files?.[0];
+      revokeGifURL();
+      downloadLink.classList.add("hidden");
+      gifPreview.classList.add("hidden");
+      emptyPreview.classList.remove("hidden");
+      gifMeta.textContent = "No GIF generated yet.";
+      setProgress(0);
+
+      if (!file) {
+        revokeVideoURL();
+        video.removeAttribute("src");
+        video.load();
+        generateBtn.disabled = true;
+        captureRangeBtn.disabled = true;
+        videoMeta.textContent = "No video loaded.";
+        setStatus("Load a video to begin.");
+        return;
+      }
+
+      revokeVideoURL();
+      sourceVideoURL = URL.createObjectURL(file);
+      video.src = sourceVideoURL;
+
+      setStatus("Loading video...");
+
+      try {
+        await new Promise((resolve, reject) => {
+          const onLoaded = () => {
+            cleanup();
+            resolve();
+          };
+
+          const onError = () => {
+            cleanup();
+            reject(new Error("The selected file could not be loaded as a video."));
+          };
+
+          const cleanup = () => {
+            video.removeEventListener("loadedmetadata", onLoaded);
+            video.removeEventListener("error", onError);
+          };
+
+          video.addEventListener("loadedmetadata", onLoaded, { once: true });
+          video.addEventListener("error", onError, { once: true });
+        });
+
+        const duration = Number.isFinite(video.duration) ? video.duration : 0;
+
+        startTimeInput.value = "0";
+        endTimeInput.value = duration.toFixed(2);
+        gifWidthInput.value = video.videoWidth;
+        gifHeightInput.value = video.videoHeight;
+
+        videoMeta.innerHTML = `
+          <span class="pill">${file.name}</span>
+          <span class="pill">${video.videoWidth} × ${video.videoHeight}</span>
+          <span class="pill">${formatTime(duration)}s</span>
+          <span class="pill">${formatBytes(file.size)}</span>
+        `;
+
+        generateBtn.disabled = false;
+        captureRangeBtn.disabled = false;
+        setStatus("Video loaded.");
+      } catch (error) {
+        generateBtn.disabled = true;
+        captureRangeBtn.disabled = true;
+        setStatus(error.message, true);
+      }
+    });
+
+    generateBtn.addEventListener("click", async () => {
+      if (!video.src) {
+        setStatus("Load a video first.", true);
+        return;
+      }
+
+      const fps = Number(fpsInput.value);
+      const width = Number(gifWidthInput.value);
+      const height = Number(gifHeightInput.value);
+      const loop = Number(loopCountInput.value);
+      const duration = Number.isFinite(video.duration) ? video.duration : 0;
+      const startTime = clamp(Number(startTimeInput.value) || 0, 0, duration);
+      const endTime = clamp(Number(endTimeInput.value) || duration, startTime, duration);
+
+      if (!Number.isFinite(width) || width <= 0 || !Number.isFinite(height) || height <= 0) {
+        setStatus("Width and height must be positive numbers.", true);
+        return;
+      }
+
+      if (startTime === endTime) {
+        setStatus("Start and end time cannot be the same.", true);
+        return;
+      }
+
+      generateBtn.disabled = true;
+      captureRangeBtn.disabled = true;
+      setProgress(0);
+      setStatus("Generating GIF...");
+
+      try {
+        revokeGifURL();
+
+        const blob = await videoToGif(video, fps, {
+          width,
+          height,
+          startTime,
+          endTime,
+          loop,
+          onProgress: ({ progress, frame, totalFrames }) => {
+            setProgress(progress);
+            setStatus(`Generating GIF... frame ${frame} / ${totalFrames}`);
+          }
+        });
+
+        gifObjectURL = URL.createObjectURL(blob);
+        gifPreview.src = gifObjectURL;
+        gifPreview.classList.remove("hidden");
+        emptyPreview.classList.add("hidden");
+
+        updateDownloadName();
+        downloadLink.href = gifObjectURL;
+        downloadLink.classList.remove("hidden");
+
+        const frameCount = Math.max(1, Math.floor(((endTime - startTime) * fps) + 1));
+        gifMeta.innerHTML = `
+          <span class="pill">${width} × ${height}</span>
+          <span class="pill">${fps} fps</span>
+          <span class="pill">${frameCount} frames</span>
+          <span class="pill">${formatBytes(blob.size)}</span>
+        `;
+
+        setProgress(1);
+        setStatus("GIF generated.");
+      } catch (error) {
+        console.error(error);
+        setStatus(error.message || "Failed to generate GIF.", true);
+        setProgress(0);
+      } finally {
+        generateBtn.disabled = false;
+        captureRangeBtn.disabled = false;
+      }
+    });
+
+    drawEmptyPreview();
+    updateDownloadName();
+
+    window.addEventListener("beforeunload", () => {
+      revokeGifURL();
+      revokeVideoURL();
+    });
+  </script>
+</body>
+</html>
