@@ -503,7 +503,7 @@
 
           if (nextCode < MAX_DICT_SIZE) {
             dict.set(key, nextCode++);
-            if (nextCode === (1 << codeSize) && codeSize < 12) {
+            if (nextCode > (1 << codeSize) && codeSize < 12) {
               codeSize++;
             }
           } else {
