@@ -238,6 +238,56 @@
       margin-top: 6px;
     }
 
+    .checkbox-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin: 2px 0 12px;
+      flex-wrap: wrap;
+    }
+
+    .checkbox {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0;
+      color: var(--text);
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    .checkbox input {
+      margin: 0;
+      accent-color: var(--accent);
+    }
+
+    .preset-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .preset-button {
+      min-height: 54px;
+      line-height: 1.2;
+      padding: 8px 10px;
+    }
+
+    .preset-button.active {
+      background: linear-gradient(180deg, var(--accent), var(--accent-2));
+      border: 0;
+      color: white;
+    }
+
+    .preset-button span {
+      display: block;
+      font-size: 11px;
+      font-weight: 500;
+      opacity: 0.85;
+      margin-top: 4px;
+    }
+
     .progress {
       height: 10px;
       border-radius: 999px;
@@ -312,6 +362,24 @@
           <div class="field">
             <label for="gifHeight">Height (px)</label>
             <input id="gifHeight" type="number" min="1" step="1" value="180" />
+          </div>
+        </div>
+        <div class="checkbox-row">
+          <label class="checkbox" for="lockAspect">
+            <input id="lockAspect" type="checkbox" checked />
+            <span>Lock aspect ratio</span>
+          </label>
+          <div class="hint" id="sizeSummary">Load a video to see scale presets.</div>
+        </div>
+        <div class="field">
+          <label>Quick size presets</label>
+          <div class="preset-grid">
+            <button type="button" class="secondary preset-button" data-scale="1" data-label="100%" disabled>100%<span>Original</span></button>
+            <button type="button" class="secondary preset-button" data-scale="0.75" data-label="75%" disabled>75%<span>Scaled</span></button>
+            <button type="button" class="secondary preset-button" data-scale="0.5" data-label="50%" disabled>50%<span>Scaled</span></button>
+            <button type="button" class="secondary preset-button" data-scale="0.33" data-label="33%" disabled>33%<span>Scaled</span></button>
+            <button type="button" class="secondary preset-button" data-scale="0.25" data-label="25%" disabled>25%<span>Scaled</span></button>
+            <button type="button" class="secondary preset-button" data-scale="0.125" data-label="12.5%" disabled>12.5%<span>Scaled</span></button>
           </div>
         </div>
         <div class="row-3">
@@ -405,36 +473,249 @@
       return Math.max(min, Math.min(max, value));
     }
 
-    function nearestPaletteIndex(r, g, b) {
-      const ri = (r * 7 / 255) | 0;
-      const gi = (g * 7 / 255) | 0;
-      const bi = (b * 3 / 255) | 0;
-      return (ri << 5) | (gi << 2) | bi;
-    }
+    const PALETTE_SIZE = 256;
+    const HISTOGRAM_SIZE = 32 * 32 * 32;
 
-    function create332Palette() {
-      const palette = new Uint8Array(256 * 3);
-      let p = 0;
+    function createFallbackPalette() {
+      const palette = new Uint8Array(PALETTE_SIZE * 3);
 
-      for (let r = 0; r < 8; r++) {
-        for (let g = 0; g < 8; g++) {
-          for (let b = 0; b < 4; b++) {
-            palette[p++] = Math.round((r * 255) / 7);
-            palette[p++] = Math.round((g * 255) / 7);
-            palette[p++] = Math.round((b * 255) / 3);
-          }
-        }
+      for (let i = 0; i < PALETTE_SIZE; i++) {
+        const offset = i * 3;
+        palette[offset] = i;
+        palette[offset + 1] = i;
+        palette[offset + 2] = i;
       }
 
       return palette;
     }
 
-    function rgbaToIndexed332(rgba) {
+    function rgbToHistogramIndex(r, g, b) {
+      return ((r >> 3) << 10) | ((g >> 3) << 5) | (b >> 3);
+    }
+
+    function createColorHistogram() {
+      return {
+        counts: new Uint32Array(HISTOGRAM_SIZE),
+        rSums: new Uint32Array(HISTOGRAM_SIZE),
+        gSums: new Uint32Array(HISTOGRAM_SIZE),
+        bSums: new Uint32Array(HISTOGRAM_SIZE)
+      };
+    }
+
+    function addFrameToHistogram(rgba, histogram, sampleStride) {
+      for (let pixelIndex = 0, dataIndex = 0; pixelIndex < rgba.length / 4; pixelIndex++, dataIndex += 4) {
+        if (pixelIndex % sampleStride !== 0) continue;
+
+        const r = rgba[dataIndex];
+        const g = rgba[dataIndex + 1];
+        const b = rgba[dataIndex + 2];
+        const key = rgbToHistogramIndex(r, g, b);
+
+        histogram.counts[key]++;
+        histogram.rSums[key] += r;
+        histogram.gSums[key] += g;
+        histogram.bSums[key] += b;
+      }
+    }
+
+    function histogramToEntries(histogram) {
+      const entries = [];
+
+      for (let key = 0; key < HISTOGRAM_SIZE; key++) {
+        const count = histogram.counts[key];
+        if (!count) continue;
+
+        entries.push({
+          key,
+          count,
+          rBin: key >> 10,
+          gBin: (key >> 5) & 31,
+          bBin: key & 31,
+          rSum: histogram.rSums[key],
+          gSum: histogram.gSums[key],
+          bSum: histogram.bSums[key]
+        });
+      }
+
+      return entries;
+    }
+
+    function createColorBox(entries) {
+      let totalCount = 0;
+      let rMin = 31;
+      let rMax = 0;
+      let gMin = 31;
+      let gMax = 0;
+      let bMin = 31;
+      let bMax = 0;
+
+      for (let i = 0; i < entries.length; i++) {
+        const entry = entries[i];
+        totalCount += entry.count;
+        rMin = Math.min(rMin, entry.rBin);
+        rMax = Math.max(rMax, entry.rBin);
+        gMin = Math.min(gMin, entry.gBin);
+        gMax = Math.max(gMax, entry.gBin);
+        bMin = Math.min(bMin, entry.bBin);
+        bMax = Math.max(bMax, entry.bBin);
+      }
+
+      return {
+        entries,
+        totalCount,
+        rMin,
+        rMax,
+        gMin,
+        gMax,
+        bMin,
+        bMax
+      };
+    }
+
+    function splitColorBox(box) {
+      if (box.entries.length < 2) {
+        return null;
+      }
+
+      const rRange = box.rMax - box.rMin;
+      const gRange = box.gMax - box.gMin;
+      const bRange = box.bMax - box.bMin;
+      const channel =
+        rRange >= gRange && rRange >= bRange ? "rBin" :
+        gRange >= bRange ? "gBin" :
+        "bBin";
+      const sorted = box.entries.slice().sort((a, b) => a[channel] - b[channel]);
+      const targetCount = box.totalCount / 2;
+      let runningCount = 0;
+      let splitIndex = 1;
+
+      for (let i = 0; i < sorted.length - 1; i++) {
+        runningCount += sorted[i].count;
+        if (runningCount >= targetCount) {
+          splitIndex = i + 1;
+          break;
+        }
+      }
+
+      return [
+        createColorBox(sorted.slice(0, splitIndex)),
+        createColorBox(sorted.slice(splitIndex))
+      ];
+    }
+
+    function averageBoxColor(box) {
+      let totalCount = 0;
+      let rSum = 0;
+      let gSum = 0;
+      let bSum = 0;
+
+      for (let i = 0; i < box.entries.length; i++) {
+        const entry = box.entries[i];
+        totalCount += entry.count;
+        rSum += entry.rSum;
+        gSum += entry.gSum;
+        bSum += entry.bSum;
+      }
+
+      if (!totalCount) {
+        return [0, 0, 0];
+      }
+
+      return [
+        Math.round(rSum / totalCount),
+        Math.round(gSum / totalCount),
+        Math.round(bSum / totalCount)
+      ];
+    }
+
+    function buildPaletteFromHistogram(histogram, paletteSize = PALETTE_SIZE) {
+      const entries = histogramToEntries(histogram);
+      if (!entries.length) {
+        return createFallbackPalette();
+      }
+
+      const boxes = [createColorBox(entries)];
+
+      while (boxes.length < paletteSize) {
+        let bestIndex = -1;
+        let bestScore = -1;
+
+        for (let i = 0; i < boxes.length; i++) {
+          const box = boxes[i];
+          if (box.entries.length < 2) continue;
+
+          const score = Math.max(
+            box.rMax - box.rMin,
+            box.gMax - box.gMin,
+            box.bMax - box.bMin
+          ) * box.totalCount;
+
+          if (score > bestScore) {
+            bestScore = score;
+            bestIndex = i;
+          }
+        }
+
+        if (bestIndex === -1) {
+          break;
+        }
+
+        const [leftBox, rightBox] = splitColorBox(boxes[bestIndex]);
+        boxes.splice(bestIndex, 1, leftBox, rightBox);
+      }
+
+      boxes.sort((a, b) => b.totalCount - a.totalCount);
+
+      const palette = new Uint8Array(paletteSize * 3);
+      let lastColor = [0, 0, 0];
+
+      for (let i = 0; i < paletteSize; i++) {
+        const color = boxes[i] ? averageBoxColor(boxes[i]) : lastColor;
+        lastColor = color;
+        const offset = i * 3;
+        palette[offset] = color[0];
+        palette[offset + 1] = color[1];
+        palette[offset + 2] = color[2];
+      }
+
+      return palette;
+    }
+
+    function buildPaletteLookup(palette) {
+      const lookup = new Uint8Array(HISTOGRAM_SIZE);
+
+      for (let key = 0; key < HISTOGRAM_SIZE; key++) {
+        const r = ((key >> 10) << 3) + 4;
+        const g = (((key >> 5) & 31) << 3) + 4;
+        const b = ((key & 31) << 3) + 4;
+        let bestDistance = Number.POSITIVE_INFINITY;
+        let bestIndex = 0;
+
+        for (let paletteIndex = 0; paletteIndex < PALETTE_SIZE; paletteIndex++) {
+          const offset = paletteIndex * 3;
+          const dr = r - palette[offset];
+          const dg = g - palette[offset + 1];
+          const db = b - palette[offset + 2];
+          const distance = (dr * dr) + (dg * dg) + (db * db);
+
+          if (distance < bestDistance) {
+            bestDistance = distance;
+            bestIndex = paletteIndex;
+          }
+        }
+
+        lookup[key] = bestIndex;
+      }
+
+      return lookup;
+    }
+
+    function rgbaToIndexed(rgba, paletteLookup) {
       const pixelCount = rgba.length / 4;
       const indexed = new Uint8Array(pixelCount);
 
       for (let i = 0, j = 0; i < pixelCount; i++, j += 4) {
-        indexed[i] = nearestPaletteIndex(rgba[j], rgba[j + 1], rgba[j + 2]);
+        indexed[i] = paletteLookup[rgbToHistogramIndex(rgba[j], rgba[j + 1], rgba[j + 2])];
       }
 
       return indexed;
@@ -532,7 +813,7 @@
         this.height = height;
         this.loop = options.loop ?? 0;
         this.backgroundIndex = options.backgroundIndex ?? 0;
-        this.palette = options.palette ?? create332Palette();
+        this.palette = options.palette ?? createFallbackPalette();
         this.writer = new ByteArray();
         this.started = false;
         this.finished = false;
@@ -679,6 +960,8 @@
 
       const frameStep = 1 / fps;
       const delayMs = 1000 / fps;
+      const frameTimes = [];
+      const epsilon = 0.000001;
 
       const canvas = document.createElement("canvas");
       canvas.width = width;
@@ -693,49 +976,73 @@
         throw new Error("Could not create 2D canvas context.");
       }
 
-      const encoder = new GIFEncoder(width, height, { loop });
-      encoder.start();
-
       const originalPaused = video.paused;
       video.pause();
 
-      const totalFrames = Math.max(1, Math.floor(((endTime - startTime) * fps) + 1));
-      let time = startTime;
-      let frameIndex = 0;
-      const epsilon = 0.000001;
+      try {
+        let time = startTime;
 
-      while (time < endTime + epsilon) {
-        await seekVideo(video, Math.min(time, endTime));
-        ctx.drawImage(video, 0, 0, width, height);
+        while (time < endTime + epsilon) {
+          frameTimes.push(Math.min(time, endTime));
+          time += frameStep;
 
-        const frame = ctx.getImageData(0, 0, width, height);
-        const indexed = rgbaToIndexed332(frame.data);
-        encoder.addFrame(indexed, delayMs);
-
-        frameIndex++;
-        if (typeof options.onProgress === "function") {
-          options.onProgress({
-            frame: frameIndex,
-            totalFrames,
-            progress: frameIndex / totalFrames
-          });
+          if (time > endTime && endTime - (time - frameStep) < epsilon) {
+            break;
+          }
         }
 
-        time += frameStep;
+        const totalFrames = frameTimes.length || 1;
+        const histogram = createColorHistogram();
+        const sampleStride = Math.max(1, Math.floor((width * height) / 25000));
 
-        if (time > endTime && endTime - (time - frameStep) < epsilon) {
-          break;
+        for (let i = 0; i < frameTimes.length; i++) {
+          await seekVideo(video, frameTimes[i]);
+          ctx.drawImage(video, 0, 0, width, height);
+          const frame = ctx.getImageData(0, 0, width, height);
+          addFrameToHistogram(frame.data, histogram, sampleStride);
+
+          if (typeof options.onProgress === "function") {
+            options.onProgress({
+              phase: "palette",
+              frame: i + 1,
+              totalFrames,
+              progress: (i + 1) / (totalFrames * 2)
+            });
+          }
+        }
+
+        const palette = buildPaletteFromHistogram(histogram);
+        const paletteLookup = buildPaletteLookup(palette);
+        const encoder = new GIFEncoder(width, height, { loop, palette });
+        encoder.start();
+
+        for (let i = 0; i < frameTimes.length; i++) {
+          await seekVideo(video, frameTimes[i]);
+          ctx.drawImage(video, 0, 0, width, height);
+
+          const frame = ctx.getImageData(0, 0, width, height);
+          const indexed = rgbaToIndexed(frame.data, paletteLookup);
+          encoder.addFrame(indexed, delayMs);
+
+          if (typeof options.onProgress === "function") {
+            options.onProgress({
+              phase: "encode",
+              frame: i + 1,
+              totalFrames,
+              progress: (totalFrames + i + 1) / (totalFrames * 2)
+            });
+          }
+        }
+
+        return encoder.finish();
+      } finally {
+        if (!originalPaused) {
+          try {
+            await video.play();
+          } catch {
+          }
         }
       }
-
-      if (!originalPaused) {
-        try {
-          await video.play();
-        } catch {
-        }
-      }
-
-      return encoder.finish();
     }
 
     const videoFileInput = document.getElementById("videoFile");
@@ -746,9 +1053,12 @@
     const endTimeInput = document.getElementById("endTime");
     const gifWidthInput = document.getElementById("gifWidth");
     const gifHeightInput = document.getElementById("gifHeight");
+    const lockAspectInput = document.getElementById("lockAspect");
+    const sizeSummaryEl = document.getElementById("sizeSummary");
     const loopCountInput = document.getElementById("loopCount");
     const outputNameInput = document.getElementById("outputName");
     const fitToVideoBtn = document.getElementById("fitToVideo");
+    const sizePresetButtons = Array.from(document.querySelectorAll(".preset-button"));
     const generateBtn = document.getElementById("generateBtn");
     const captureRangeBtn = document.getElementById("captureRangeBtn");
     const statusEl = document.getElementById("status");
@@ -761,6 +1071,8 @@
 
     let sourceVideoURL = "";
     let gifObjectURL = "";
+    let sourceAspectRatio = 320 / 180;
+    let isSyncingSizeInputs = false;
 
     function setStatus(message, isError = false) {
       statusEl.textContent = message;
@@ -840,16 +1152,157 @@
       downloadLink.download = name.toLowerCase().endsWith(".gif") ? name : `${name}.gif`;
     }
 
+    function roundDimension(value) {
+      return Math.max(1, Math.round(value));
+    }
+
+    function getSourceDimensions() {
+      if (!video.videoWidth || !video.videoHeight) {
+        return null;
+      }
+
+      return {
+        width: video.videoWidth,
+        height: video.videoHeight
+      };
+    }
+
+    function getScaledDimensions(scale) {
+      const dimensions = getSourceDimensions();
+      if (!dimensions) {
+        return null;
+      }
+
+      const width = roundDimension(dimensions.width * scale);
+      const height = roundDimension(width / sourceAspectRatio);
+
+      return { width, height };
+    }
+
+    function setOutputDimensions(width, height) {
+      isSyncingSizeInputs = true;
+      gifWidthInput.value = roundDimension(width);
+      gifHeightInput.value = roundDimension(height);
+      isSyncingSizeInputs = false;
+      updateSizeSummary();
+      updateSizePresetButtons();
+    }
+
+    function updateSizeSummary() {
+      const dimensions = getSourceDimensions();
+      const width = Number(gifWidthInput.value);
+      const height = Number(gifHeightInput.value);
+
+      if (!dimensions || !Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+        sizeSummaryEl.textContent = "Load a video to see scale presets.";
+        return;
+      }
+
+      const scale = (width / dimensions.width) * 100;
+      const mode = lockAspectInput.checked ? "Locked" : "Unlocked";
+      sizeSummaryEl.textContent = `${mode} · ${scale.toFixed(scale < 20 ? 1 : 0)}% scale · ${width} × ${height}`;
+    }
+
+    function updateSizePresetButtons() {
+      const dimensions = getSourceDimensions();
+      const currentWidth = Number(gifWidthInput.value);
+      const currentHeight = Number(gifHeightInput.value);
+
+      for (let i = 0; i < sizePresetButtons.length; i++) {
+        const button = sizePresetButtons[i];
+        const label = button.dataset.label;
+        const detail = button.querySelector("span");
+
+        if (!dimensions) {
+          button.disabled = true;
+          button.classList.remove("active");
+          button.firstChild.textContent = label;
+          detail.textContent = "Scaled";
+          continue;
+        }
+
+        const preset = getScaledDimensions(Number(button.dataset.scale));
+        button.disabled = false;
+        button.firstChild.textContent = label;
+        detail.textContent = `${preset.width} × ${preset.height}`;
+        button.classList.toggle("active", preset.width === currentWidth && preset.height === currentHeight);
+      }
+    }
+
+    function syncHeightFromWidth() {
+      if (isSyncingSizeInputs) return;
+
+      const width = Number(gifWidthInput.value);
+      if (!Number.isFinite(width) || width <= 0) {
+        updateSizeSummary();
+        updateSizePresetButtons();
+        return;
+      }
+
+      if (lockAspectInput.checked) {
+        isSyncingSizeInputs = true;
+        gifHeightInput.value = roundDimension(width / sourceAspectRatio);
+        isSyncingSizeInputs = false;
+      }
+
+      updateSizeSummary();
+      updateSizePresetButtons();
+    }
+
+    function syncWidthFromHeight() {
+      if (isSyncingSizeInputs) return;
+
+      const height = Number(gifHeightInput.value);
+      if (!Number.isFinite(height) || height <= 0) {
+        updateSizeSummary();
+        updateSizePresetButtons();
+        return;
+      }
+
+      if (lockAspectInput.checked) {
+        isSyncingSizeInputs = true;
+        gifWidthInput.value = roundDimension(height * sourceAspectRatio);
+        isSyncingSizeInputs = false;
+      }
+
+      updateSizeSummary();
+      updateSizePresetButtons();
+    }
+
+    function syncOutputToSource() {
+      const dimensions = getSourceDimensions();
+      if (!dimensions) return;
+
+      sourceAspectRatio = dimensions.width / dimensions.height;
+      setOutputDimensions(dimensions.width, dimensions.height);
+    }
+
     fpsInput.addEventListener("input", () => {
       fpsValue.textContent = fpsInput.value;
     });
 
     outputNameInput.addEventListener("input", updateDownloadName);
+    gifWidthInput.addEventListener("input", syncHeightFromWidth);
+    gifHeightInput.addEventListener("input", syncWidthFromHeight);
+    lockAspectInput.addEventListener("change", () => {
+      if (lockAspectInput.checked) {
+        syncHeightFromWidth();
+      } else {
+        updateSizeSummary();
+        updateSizePresetButtons();
+      }
+    });
 
     fitToVideoBtn.addEventListener("click", () => {
-      if (!video.videoWidth || !video.videoHeight) return;
-      gifWidthInput.value = video.videoWidth;
-      gifHeightInput.value = video.videoHeight;
+      syncOutputToSource();
+    });
+
+    sizePresetButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        const preset = getScaledDimensions(Number(button.dataset.scale));
+        if (!preset) return;
+        setOutputDimensions(preset.width, preset.height);
+      });
     });
 
     captureRangeBtn.addEventListener("click", () => {
@@ -873,6 +1326,8 @@
         generateBtn.disabled = true;
         captureRangeBtn.disabled = true;
         videoMeta.textContent = "No video loaded.";
+        updateSizeSummary();
+        updateSizePresetButtons();
         setStatus("Load a video to begin.");
         return;
       }
@@ -908,8 +1363,7 @@
 
         startTimeInput.value = "0";
         endTimeInput.value = duration.toFixed(2);
-        gifWidthInput.value = video.videoWidth;
-        gifHeightInput.value = video.videoHeight;
+        syncOutputToSource();
 
         videoMeta.innerHTML = `
           <span class="pill">${file.name}</span>
@@ -924,6 +1378,8 @@
       } catch (error) {
         generateBtn.disabled = true;
         captureRangeBtn.disabled = true;
+        updateSizeSummary();
+        updateSizePresetButtons();
         setStatus(error.message, true);
       }
     });
@@ -966,9 +1422,9 @@
           startTime,
           endTime,
           loop,
-          onProgress: ({ progress, frame, totalFrames }) => {
+          onProgress: ({ phase, progress, frame, totalFrames }) => {
             setProgress(progress);
-            setStatus(`Generating GIF... frame ${frame} / ${totalFrames}`);
+            setStatus(`${phase === "palette" ? "Analyzing colors" : "Encoding GIF"}... frame ${frame} / ${totalFrames}`);
           }
         });
 
@@ -982,8 +1438,10 @@
         downloadLink.classList.remove("hidden");
 
         const frameCount = Math.max(1, Math.floor(((endTime - startTime) * fps) + 1));
+        const scale = video.videoWidth ? ((width / video.videoWidth) * 100) : 100;
         gifMeta.innerHTML = `
           <span class="pill">${width} × ${height}</span>
+          <span class="pill">${scale.toFixed(scale < 20 ? 1 : 0)}% scale</span>
           <span class="pill">${fps} fps</span>
           <span class="pill">${frameCount} frames</span>
           <span class="pill">${formatBytes(blob.size)}</span>
@@ -1003,6 +1461,8 @@
 
     drawEmptyPreview();
     updateDownloadName();
+    updateSizeSummary();
+    updateSizePresetButtons();
 
     window.addEventListener("beforeunload", () => {
       revokeGifURL();
